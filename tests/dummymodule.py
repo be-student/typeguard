@@ -369,3 +369,52 @@ class ModuleLocalClass:
 
 class TypedDictWithForwardRef(TypedDict):
     x: "ModuleLocalClass"
+
+
+@typechecked
+def checked_for_binding(values, seen):
+    value: int
+    for value in values:
+        seen.append(value)
+    else:
+        seen.append("else")
+
+
+@typechecked
+async def checked_async_for_binding(values, seen):
+    value: int
+    async for value in values:
+        seen.append(value)
+    else:
+        seen.append("else")
+
+
+@typechecked
+def checked_with_binding(first, second, seen):
+    value: int
+    other: str
+    with first as value, second as other:
+        seen.append((value, other))
+
+
+@typechecked
+async def checked_async_with_binding(first, second, seen):
+    value: int
+    other: str
+    async with first as value, second as other:
+        seen.append((value, other))
+
+
+@typechecked
+def checked_unpack_binding(values, seen):
+    value: int
+    rest: list[str]
+    for [value, (*rest,)] in values:
+        seen.append((value, rest))
+
+
+@typechecked
+def later_loop_annotation(values):
+    for value in values:
+        value: int
+    return value

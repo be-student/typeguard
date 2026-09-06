@@ -453,3 +453,100 @@ class TestTypeAlias:
             match=r'argument "x" \(class dict\) is not a subclass of list',
         ):
             dummymodule_py312.func_using_type_of_type_alias(dict)
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("values", [[], [1, 2], [1, "bad"]])
+def test_checked_loop_binding(dummymodule, asynchronous, values):
+    seen = []
+
+    async def async_values():
+        for value in values:
+            yield value
+
+    def run():
+        if asynchronous:
+            asyncio.run(dummymodule.checked_async_for_binding(async_values(), seen))
+        else:
+            dummymodule.checked_for_binding(values, seen)
+
+    if "bad" in values:
+        with pytest.raises(TypeCheckError, match="value assigned to value"):
+            run()
+        assert seen == [1]
+    else:
+        run()
+        assert seen == [*values, "else"]
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize(
+    "first_value, second_value", [(1, "ok"), ("bad", "ok"), (1, 2)]
+)
+@pytest.mark.parametrize("suppress", [False, True])
+def test_checked_context_binding(
+    dummymodule, asynchronous, first_value, second_value, suppress
+):
+    seen = []
+    events = []
+
+    class Manager:
+        def __init__(self, name, value):
+            self.name = name
+            self.value = value
+
+        def __enter__(self):
+            events.append((self.name, "enter"))
+            return self.value
+
+        def __exit__(self, exc_type, exc, tb):
+            events.append((self.name, "exit", exc_type))
+            return suppress
+
+        async def __aenter__(self):
+            return self.__enter__()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return self.__exit__(exc_type, exc, tb)
+
+    def run():
+        first, second = Manager("first", first_value), Manager("second", second_value)
+        if asynchronous:
+            asyncio.run(dummymodule.checked_async_with_binding(first, second, seen))
+        else:
+            dummymodule.checked_with_binding(first, second, seen)
+
+    invalid = first_value == "bad" or second_value == 2
+    if invalid and not suppress:
+        with pytest.raises(TypeCheckError, match="value assigned to"):
+            run()
+    else:
+        run()
+
+    assert seen == ([] if invalid else [(1, "ok")])
+    if first_value == "bad":
+        assert events == [("first", "enter"), ("first", "exit", TypeCheckError)]
+    else:
+        error = TypeCheckError if invalid else None
+        assert events == [
+            ("first", "enter"),
+            ("second", "enter"),
+            ("second", "exit", error),
+            ("first", "exit", None if suppress else error),
+        ]
+
+
+@pytest.mark.parametrize("value", [(1, ["a", "b"]), ("bad", ["a"]), (1, [2])])
+def test_checked_unpack_binding(dummymodule, value):
+    seen = []
+    if value[0] == "bad" or value[1] == [2]:
+        with pytest.raises(TypeCheckError, match="value assigned to"):
+            dummymodule.checked_unpack_binding([value], seen)
+        assert seen == []
+    else:
+        dummymodule.checked_unpack_binding([value], seen)
+        assert seen == [value]
+
+
+def test_later_loop_annotation(dummymodule):
+    assert dummymodule.later_loop_annotation(["unchecked"]) == "unchecked"

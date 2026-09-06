@@ -8,7 +8,9 @@ from ast import (
     Add,
     AnnAssign,
     Assign,
+    AsyncFor,
     AsyncFunctionDef,
+    AsyncWith,
     Attribute,
     AugAssign,
     BinOp,
@@ -23,6 +25,7 @@ from ast import (
     Expr,
     Expression,
     FloorDiv,
+    For,
     FunctionDef,
     If,
     Import,
@@ -47,6 +50,7 @@ from ast import (
     Sub,
     Subscript,
     Tuple,
+    With,
     Yield,
     YieldFrom,
     alias,
@@ -54,6 +58,7 @@ from ast import (
     expr,
     fix_missing_locations,
     keyword,
+    stmt,
     walk,
 )
 from collections import defaultdict
@@ -1141,6 +1146,79 @@ class TypeguardTransformer(NodeTransformer):
                 )
 
         return node
+
+    def _get_binding_checks(self, target: expr) -> list[stmt]:
+        """Check annotated names after native binding, without repeating unpacking."""
+        if not isinstance(self._memo.node, (FunctionDef, AsyncFunctionDef)):
+            return []
+
+        if isinstance(target, (Tuple, List)):
+            return [
+                check for elt in target.elts for check in self._get_binding_checks(elt)
+            ]
+        elif isinstance(target, Starred):
+            return self._get_binding_checks(target.value)
+        elif not isinstance(target, Name):
+            return []
+
+        self._memo.ignored_names.add(target.id)
+        annotation = self._memo.variable_annotations.get(target.id)
+        if annotation is None:
+            return []
+
+        return [
+            copy_location(
+                Expr(
+                    Call(
+                        self._get_import(
+                            "typeguard._functions", "check_variable_assignment"
+                        ),
+                        [
+                            Name(target.id, ctx=Load()),
+                            List(
+                                [Tuple([Constant(target.id), annotation], ctx=Load())],
+                                ctx=Load(),
+                            ),
+                            self._memo.get_memo_name(),
+                        ],
+                        [],
+                    )
+                ),
+                target,
+            )
+        ]
+
+    def visit_For(self, node: For | AsyncFor) -> For | AsyncFor:
+        # Capture only annotations available before entering the loop body.
+        checks = self._get_binding_checks(node.target)
+        self.generic_visit(node)
+        node.body[:0] = checks
+        return node
+
+    visit_AsyncFor = visit_For
+
+    def visit_With(self, node: With | AsyncWith) -> With | AsyncWith:
+        checks = [
+            self._get_binding_checks(item.optional_vars) if item.optional_vars else []
+            for item in node.items
+        ]
+        self.generic_visit(node)
+        if not any(checks):
+            return node
+
+        # Nested managers preserve enter/exit ordering and exception suppression:
+        # each binding is checked before the next context expression is evaluated.
+        body = node.body
+        for item, item_checks in reversed(list(zip(node.items, checks))):
+            nested = copy_location(
+                type(node)(items=[item], body=[*item_checks, *body], type_comment=None),
+                node,
+            )
+            body = [nested]
+
+        return nested
+
+    visit_AsyncWith = visit_With
 
     def visit_NamedExpr(self, node: NamedExpr) -> Any:
         """This injects a type check into an assignment expression (a := foo())."""

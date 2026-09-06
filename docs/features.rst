@@ -12,13 +12,19 @@ The following type checks are implemented in Typeguard:
 * Types of values returned from instrumented functions
 * Types of values yielded from instrumented generator functions
 * Types of values sent to instrumented generator functions
-* Types of values assigned to local variables within instrumented functions
+* Types of values assigned to local variables within instrumented functions, including
+  previously annotated names bound by ``for``, ``async for``, ``with ... as`` and
+  ``async with ... as``. These bindings are checked after Python binds the target and
+  before the body (or the next context manager) runs. Unpacking retains Python's normal
+  behavior, including starred targets.
 
 What does Typeguard NOT check?
 ------------------------------
 
 The following type checks are not yet supported in Typeguard:
 
+* Local-variable bindings in exception handlers, pattern matching, imports and
+  comprehensions
 * Types of values assigned to class or instance variables
 * Types of values assigned to global or nonlocal variables
 * Stubs defined with :func:`@overload <typing.overload>` (the implementation is checked
