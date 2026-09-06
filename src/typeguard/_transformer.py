@@ -301,6 +301,10 @@ class NameCollector(NodeVisitor):
             if isinstance(target, Name):
                 self.names.add(target.id)
 
+    def visit_AnnAssign(self, node: AnnAssign) -> None:
+        if isinstance(node.target, Name):
+            self.names.add(node.target.id)
+
     def visit_NamedExpr(self, node: NamedExpr) -> Any:
         if isinstance(node.target, Name):
             self.names.add(node.target.id)
@@ -309,7 +313,7 @@ class NameCollector(NodeVisitor):
         pass
 
     def visit_ClassDef(self, node: ClassDef) -> None:
-        pass
+        self.names.add(node.name)
 
 
 class GeneratorDetector(NodeVisitor):
@@ -1229,8 +1233,6 @@ class TypeguardTransformer(NodeTransformer):
         "if typing.TYPE_CHECKING:" block, so that they won't be type checked.
 
         """
-        self.generic_visit(node)
-
         if (
             self._memo is self._module_memo
             and isinstance(node.test, Name)
@@ -1240,4 +1242,5 @@ class TypeguardTransformer(NodeTransformer):
             collector.visit(node)
             self._memo.ignored_names.update(collector.names)
 
+        self.generic_visit(node)
         return node

@@ -968,6 +968,65 @@ class TestTypecheckingImport:
             ).strip()
         )
 
+    def test_class_and_annotated_alias(self) -> None:
+        node = parse(
+            dedent(
+                """
+                from __future__ import annotations
+                from typing import TYPE_CHECKING, TypedDict
+                if TYPE_CHECKING:
+                    class Args(TypedDict):
+                        x: int
+
+                    Alias: object = Args
+
+                def foo(value) -> None:
+                    args: Args = value
+                    alias: Alias = value
+                """
+            )
+        )
+        TypeguardTransformer().visit(node)
+        assert (
+            unparse(node)
+            == dedent(
+                """
+                from __future__ import annotations
+                from typing import TYPE_CHECKING, TypedDict
+                if TYPE_CHECKING:
+
+                    class Args(TypedDict):
+                        x: int
+                    Alias: object = Args
+
+                def foo(value) -> None:
+                    args: Args = value
+                    alias: Alias = value
+                """
+            ).strip()
+        )
+
+    def test_class_with_targeted_instrumentation(self) -> None:
+        node = parse(
+            dedent(
+                """
+                from __future__ import annotations
+                from typing import TYPE_CHECKING, TypedDict
+                if TYPE_CHECKING:
+                    class Args(TypedDict):
+                        x: int
+
+                def foo(value) -> None:
+                    args: Args = value
+                """
+            )
+        )
+        target = node.body[-1]
+        TypeguardTransformer(("foo",), target.lineno).visit(node)
+        transformed = unparse(node)
+        assert "check_variable_assignment" not in transformed
+        assert "args: Args = value" in transformed
+
     def test_collection_parameter(self) -> None:
         node = parse(
             dedent(
