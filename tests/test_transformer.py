@@ -1245,6 +1245,18 @@ typing.Collection, Sequence]:
         )
 
 
+@pytest.mark.skipif(
+    sys.version_info < (3, 12), reason="type statements require Python 3.12"
+)
+@pytest.mark.parametrize("alias", ["type Hidden = int", "type Hidden[T] = list[T]"])
+def test_type_checking_type_alias_binding(alias: str) -> None:
+    source = f"from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    {alias}\n\ndef foo(value: Hidden) -> None:\n    pass\n"
+    node = parse(source)
+    expected = unparse(node)
+    TypeguardTransformer().visit(node)
+    assert unparse(node) == expected
+
+
 class TestAssign:
     def test_annotated_assign(self) -> None:
         node = parse(

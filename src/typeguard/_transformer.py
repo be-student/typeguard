@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import builtins
+import sys
 import typing
 from ast import (
     AST,
@@ -314,6 +315,11 @@ class NameCollector(NodeVisitor):
 
     def visit_ClassDef(self, node: ClassDef) -> None:
         self.names.add(node.name)
+
+    if sys.version_info >= (3, 12):
+
+        def visit_TypeAlias(self, node: ast.TypeAlias) -> None:
+            self.names.add(node.name.id)
 
 
 class GeneratorDetector(NodeVisitor):
