@@ -1239,13 +1239,13 @@ class TypeguardTransformer(NodeTransformer):
         "if typing.TYPE_CHECKING:" block, so that they won't be type checked.
 
         """
-        if (
-            self._memo is self._module_memo
-            and isinstance(node.test, Name)
-            and self._memo.name_matches(node.test, "typing.TYPE_CHECKING")
+        if self._memo is self._module_memo and self._memo.name_matches(
+            node.test, "typing.TYPE_CHECKING"
         ):
             collector = NameCollector()
-            collector.visit(node)
+            for child_node in node.body:
+                collector.visit(child_node)
+
             self._memo.ignored_names.update(collector.names)
 
         self.generic_visit(node)

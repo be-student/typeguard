@@ -1050,6 +1050,26 @@ class TestTypecheckingImport:
     @pytest.mark.skipif(
         sys.version_info < (3, 12), reason="type statements require Python 3.12"
     )
+    def test_type_alias_with_qualified_condition(self) -> None:
+        node = parse(
+            dedent(
+                """
+                import typing
+                if typing.TYPE_CHECKING:
+                    type Hidden = int
+
+                def foo(value: Hidden) -> None:
+                    pass
+                """
+            )
+        )
+        expected = unparse(node)
+        TypeguardTransformer().visit(node)
+        assert unparse(node) == expected
+
+    @pytest.mark.skipif(
+        sys.version_info < (3, 12), reason="type statements require Python 3.12"
+    )
     def test_type_alias_with_targeted_instrumentation(self) -> None:
         node = parse(
             dedent(
@@ -1069,6 +1089,51 @@ class TestTypecheckingImport:
         transformed = unparse(node)
         assert "check_variable_assignment" not in transformed
         assert "args: Args = value" in transformed
+
+    def test_else_class_is_available_at_runtime(self) -> None:
+        node = parse(
+            dedent(
+                """
+                from typing import TYPE_CHECKING
+                if TYPE_CHECKING:
+                    class Hidden:
+                        pass
+                else:
+                    class RuntimeType:
+                        pass
+
+                def foo(value) -> None:
+                    runtime_value: RuntimeType = value
+                """
+            )
+        )
+        TypeguardTransformer().visit(node)
+        transformed = unparse(node)
+        assert "check_variable_assignment" in transformed
+        assert "('runtime_value', RuntimeType)" in transformed
+
+    @pytest.mark.skipif(
+        sys.version_info < (3, 12), reason="type statements require Python 3.12"
+    )
+    def test_else_type_alias_is_available_at_runtime(self) -> None:
+        node = parse(
+            dedent(
+                """
+                from typing import TYPE_CHECKING
+                if TYPE_CHECKING:
+                    type Hidden = int
+                else:
+                    type RuntimeType = str
+
+                def foo(value) -> None:
+                    runtime_value: RuntimeType = value
+                """
+            )
+        )
+        TypeguardTransformer().visit(node)
+        transformed = unparse(node)
+        assert "check_variable_assignment" in transformed
+        assert "('runtime_value', RuntimeType)" in transformed
 
     def test_collection_parameter(self) -> None:
         node = parse(
