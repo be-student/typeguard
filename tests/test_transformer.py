@@ -1027,6 +1027,49 @@ class TestTypecheckingImport:
         assert "check_variable_assignment" not in transformed
         assert "args: Args = value" in transformed
 
+    @pytest.mark.skipif(
+        sys.version_info < (3, 12), reason="type statements require Python 3.12"
+    )
+    @pytest.mark.parametrize("alias", ["type Hidden = int", "type Hidden[T] = list[T]"])
+    def test_type_alias(self, alias: str) -> None:
+        source = dedent(
+            f"""
+            from typing import TYPE_CHECKING
+            if TYPE_CHECKING:
+                {alias}
+
+            def foo(value: Hidden) -> None:
+                pass
+            """
+        )
+        node = parse(source)
+        expected = unparse(node)
+        TypeguardTransformer().visit(node)
+        assert unparse(node) == expected
+
+    @pytest.mark.skipif(
+        sys.version_info < (3, 12), reason="type statements require Python 3.12"
+    )
+    def test_type_alias_with_targeted_instrumentation(self) -> None:
+        node = parse(
+            dedent(
+                """
+                from __future__ import annotations
+                from typing import TYPE_CHECKING
+                if TYPE_CHECKING:
+                    type Args = dict[str, int]
+
+                def foo(value) -> None:
+                    args: Args = value
+                """
+            )
+        )
+        target = node.body[-1]
+        TypeguardTransformer(("foo",), target.lineno).visit(node)
+        transformed = unparse(node)
+        assert "check_variable_assignment" not in transformed
+        assert "args: Args = value" in transformed
+
     def test_collection_parameter(self) -> None:
         node = parse(
             dedent(
@@ -1243,18 +1286,6 @@ typing.Collection, Sequence]:
                 """
             ).strip()
         )
-
-
-@pytest.mark.skipif(
-    sys.version_info < (3, 12), reason="type statements require Python 3.12"
-)
-@pytest.mark.parametrize("alias", ["type Hidden = int", "type Hidden[T] = list[T]"])
-def test_type_checking_type_alias_binding(alias: str) -> None:
-    source = f"from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    {alias}\n\ndef foo(value: Hidden) -> None:\n    pass\n"
-    node = parse(source)
-    expected = unparse(node)
-    TypeguardTransformer().visit(node)
-    assert unparse(node) == expected
 
 
 class TestAssign:
